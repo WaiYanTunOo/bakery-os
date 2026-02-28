@@ -1,12 +1,11 @@
 # bakery_os
 
-> **Security Notice:** This project uses Supabase with permissive row-level security (RLS) policies for development. Before production deploy:
+> **Security Notice:** This project now uses Supabase Auth email/password login and role-scoped UI guards. Before production deploy:
 > 
 > 1. Configure RLS rules in Supabase to enforce role-based access control.
-> 2. Only select necessary columns (see `lib/services/supabase_service.dart`).
-> 3. Store sensitive keys in a `.env` file and do **not** commit it (see `.env.example`).
-
-A new Flutter project.
+> 2. Configure JWT claims (`app_role`, `staff_name`, optional `staff_id`) for every staff auth user.
+> 3. Only select necessary columns (see `lib/services/supabase_service.dart`).
+> 4. Store sensitive keys in a `.env` file and do **not** commit it (see `.env.example`).
 
 ## Configuration & Secrets
 
@@ -55,6 +54,35 @@ The hardening script includes:
 - status/role check constraints (`pending|verified`, `pending|delivered`, `FH|BH|Owner`)
 - non-negative/shape checks for financial and JSON fields
 - production RLS policy templates for role-based access using JWT claims
+
+### Auth-to-Staff Binding (Safer Onboarding + Audit)
+
+Apply `supabase/production_auth_staff_binding.sql` after base schema and production hardening scripts.
+
+It adds:
+
+- `staff_auth_bindings`: one active mapping between `auth.users.id` and `staff_directory.id`
+- `staff_auth_binding_audit`: append-only trail for onboarding/rebinding actions
+- `v_staff_auth_active_with_last_audit`: read-only view of active mappings + latest audit action
+- `get_staff_auth_audit_report(role, email, from_date, to_date, limit)`: backend-only filtered reporting function
+- `bind_auth_user_to_staff(...)`: secure function (service role only) for controlled linking
+- `deactivate_staff_auth_binding(...)`: secure offboarding unlink with mandatory audit reason
+
+Recommended onboarding flow:
+
+1. Create/confirm staff record in `staff_directory` (with correct role).
+2. Create Supabase Auth user (email/password or invite).
+3. Call `bind_auth_user_to_staff(auth_user_id, staff_id, email, performed_by, reason)` via backend/service-role context.
+4. Set JWT claims from the bound record (`app_role`, `staff_name`, `staff_id`) so app/UI and RLS are aligned.
+5. Review `v_staff_auth_active_with_last_audit` and `staff_auth_binding_audit` for compliance checks.
+
+Recommended offboarding flow:
+
+1. Call `deactivate_staff_auth_binding(performed_by, reason, staff_id, auth_user_id)` from backend/service-role context.
+2. Verify return value > 0 (active binding(s) were deactivated).
+3. Confirm an `unlink` record exists in `staff_auth_binding_audit` with the reason.
+
+Reporting example (backend/service-role context): `select * from public.get_staff_auth_audit_report('FH', null, current_date - 30, current_date, 200);`
 
 ## Getting Started
 

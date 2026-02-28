@@ -6,15 +6,15 @@
 // tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 
-import 'package:bakery_os/main.dart';
+import 'package:bakery_os/screens/login_screen.dart';
 
 void main() {
-  testWidgets('App loads and shows title', (WidgetTester tester) async {
-    // Build the app and trigger a frame.
-    await tester.pumpWidget(const BakeryOSApp());
+  testWidgets('Login screen loads and shows secure title', (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(home: LoginScreen(onSignedIn: () {})));
 
-    // Verify that the app title is shown.
-    expect(find.text('BakeryOS'), findsOneWidget);
+    expect(find.text('BakeryOS Secure Login'), findsOneWidget);
+    expect(find.text('Sign in securely'), findsOneWidget);
   });
 }
