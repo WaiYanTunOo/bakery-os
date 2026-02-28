@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/app_data.dart';
+import '../../services/supabase_service.dart';
 import '../../utils/data_utils.dart';
 
 class ProductionDeliveryTab extends StatefulWidget {
@@ -17,26 +17,50 @@ class ProductionDeliveryTab extends StatefulWidget {
 
 class _ProductionDeliveryTabState extends State<ProductionDeliveryTab> {
   String _targetDate = '';
+  late final TextEditingController _targetDateController;
   String? _fhReqItem;
   final Map<String, String> _bhInputs = {};
+
+  Map<String, int> _preOrderTotals = {};
 
   @override
   void initState() {
     super.initState();
     _targetDate = AppDateUtils.todayStr();
+    _targetDateController = TextEditingController(text: _targetDate);
+    _computePreOrders();
+  }
+
+  @override
+  void dispose() {
+    _targetDateController.dispose();
+    super.dispose();
+  }
+
+  void _computePreOrders() {
+    final totals = <String, int>{};
+    for (var order in widget.appData.onlineOrders.where((o) => o['status'] == 'verified')) {
+      for (var item in order['items']) {
+        if (item['deliveryDate'] == _targetDate) {
+          totals[item['name']] = (totals[item['name']] ?? 0) + (item['qty'] as int);
+        }
+      }
+    }
+    setState(() => _preOrderTotals = totals);
+  }
+
+  @override
+  void didUpdateWidget(covariant ProductionDeliveryTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.appData.onlineOrders != widget.appData.onlineOrders) {
+      _computePreOrders();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Aggregate pre-orders
-    Map<String, int> preOrderTotals = {};
-    for (var order in widget.appData.onlineOrders.where((o) => o['status'] == 'verified')) {
-      for (var item in order['items']) {
-        if (item['deliveryDate'] == _targetDate) {
-          preOrderTotals[item['name']] = (preOrderTotals[item['name']] ?? 0) + (item['qty'] as int);
-        }
-      }
-    }
+    // totals already computed, avoids recalculation on every build
+    Map<String, int> preOrderTotals = _preOrderTotals;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,7 +100,6 @@ class _ProductionDeliveryTabState extends State<ProductionDeliveryTab> {
                   ElevatedButton(
                     onPressed: () async {
                       if (_fhReqItem == null) return;
-                      final supabase = Supabase.instance.client;
                       final newReq = {
                         'id': 'REQ-${Random().nextInt(100000)}',
                         'name': _fhReqItem,
@@ -90,13 +113,10 @@ class _ProductionDeliveryTabState extends State<ProductionDeliveryTab> {
                       debugPrint('Attempting showcase request insert: $newReq');
                       final messenger = ScaffoldMessenger.of(context);
                       try {
-                        final resp = await supabase.from('showcase_requests').insert(newReq).select() as List<dynamic>;
-                        debugPrint('Insert response data: $resp');
-                        if (resp.isNotEmpty) {
-                          final inserted = resp.first as Map<String, dynamic>;
+                        final inserted = await SupabaseService.instance.insertShowcaseRequest(newReq);
+                        if (inserted != null) {
                           widget.appData.showcaseRequests.insert(0, inserted);
                         } else {
-                          // nothing returned
                           widget.appData.showcaseRequests.insert(0, {
                             'id': 'REQ-${Random().nextInt(1000)}',
                             ...newReq,
@@ -108,7 +128,7 @@ class _ProductionDeliveryTabState extends State<ProductionDeliveryTab> {
                       } catch (e) {
                         debugPrint('Failed to persist showcase request: $e');
                         messenger.showSnackBar(
-                          SnackBar(content: Text('Error saving request: $e'), backgroundColor: Colors.red),
+                          const SnackBar(content: Text('Error saving request. Please try again.'), backgroundColor: Colors.red),
                         );
                         widget.appData.showcaseRequests.insert(0, {
                           'id': 'REQ-${Random().nextInt(1000)}',
@@ -159,7 +179,6 @@ class _ProductionDeliveryTabState extends State<ProductionDeliveryTab> {
                                   onPressed: () async {
                                     int? qty = int.tryParse(_bhInputs[req['id']] ?? '');
                                     if (qty == null) return;
-                                    final supabase = Supabase.instance.client;
                                     // Update locally first for immediate UI feedback
                                     req['status'] = 'delivered';
                                     req['delivered_qty'] = qty;
@@ -169,12 +188,13 @@ class _ProductionDeliveryTabState extends State<ProductionDeliveryTab> {
                                     // Attempt to persist update to Supabase; ignore errors but log
                                     try {
                                       if (req['id'] != null) {
-                                        await supabase.from('showcase_requests').update({
+                                        final ok = await SupabaseService.instance.updateShowcaseRequest(req['id'], {
                                           'status': 'delivered',
                                           'delivered_qty': qty,
                                           'time_delivered': req['time_delivered'],
                                           'delivered_by': req['delivered_by'],
-                                        }).eq('id', req['id']);
+                                        });
+                                        if (!ok) debugPrint('Update returned false');
                                       }
                                     } catch (e) {
                                       debugPrint('Failed to update showcase request: $e');
@@ -208,11 +228,17 @@ class _ProductionDeliveryTabState extends State<ProductionDeliveryTab> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Kitchen Queue: Pre-Orders', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    SizedBox(width: 200, child: TextField(
-                      decoration: const InputDecoration(labelText: 'Bake for Date', border: OutlineInputBorder()),
-                      controller: TextEditingController(text: _targetDate),
-                      onSubmitted: (val) => setState(() => _targetDate = val),
-                    )),
+                    SizedBox(
+                      width: 200,
+                      child: TextField(
+                        decoration: const InputDecoration(labelText: 'Bake for Date', border: OutlineInputBorder()),
+                        controller: _targetDateController,
+                        onSubmitted: (val) {
+                          setState(() => _targetDate = val);
+                          _computePreOrders();
+                        },
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),

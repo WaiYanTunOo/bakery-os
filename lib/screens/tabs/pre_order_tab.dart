@@ -127,12 +127,12 @@ class _PreOrderTabState extends State<PreOrderTab> {
                   children: [
                     TableRow(
                       decoration: BoxDecoration(color: Colors.indigo.shade50),
-                      children: const [
-                        Padding(padding: EdgeInsets.all(8.0), child: Text('Item', style: TextStyle(fontWeight: FontWeight.bold))),
-                        Padding(padding: EdgeInsets.all(8.0), child: Text('Date', style: TextStyle(fontWeight: FontWeight.bold))),
-                        Padding(padding: EdgeInsets.all(8.0), child: Text('Qty', style: TextStyle(fontWeight: FontWeight.bold))),
-                        Padding(padding: EdgeInsets.all(8.0), child: Text('Total', style: TextStyle(fontWeight: FontWeight.bold))),
-                        Padding(padding: EdgeInsets.all(8.0), child: Text('')),
+                      children: [
+                        Padding(padding: const EdgeInsets.all(8.0), child: const Text('Item', style: TextStyle(fontWeight: FontWeight.bold))),
+                        Padding(padding: const EdgeInsets.all(8.0), child: const Text('Date', style: TextStyle(fontWeight: FontWeight.bold))),
+                        Padding(padding: const EdgeInsets.all(8.0), child: const Text('Qty', style: TextStyle(fontWeight: FontWeight.bold))),
+                        Padding(padding: const EdgeInsets.all(8.0), child: const Text('Total', style: TextStyle(fontWeight: FontWeight.bold))),
+                        Padding(padding: const EdgeInsets.all(8.0), child: const Text('')),
                       ]
                     ),
                     ..._currentCart.asMap().entries.map((entry) {

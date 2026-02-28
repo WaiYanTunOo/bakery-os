@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // for RealtimeChannel & types
+import '../services/supabase_service.dart';
 import '../data/app_data.dart';
 import 'role_selection_screen.dart';
 
@@ -29,8 +30,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // App State passed to all children
   final AppData _appData = AppData();
   
-  // Supabase client instance
-  final supabase = Supabase.instance.client;
+  // The service provides access to Supabase functionality
+  // (client should not be referenced directly in widgets).
+  // final supabase = Supabase.instance.client; // removed
 
   RealtimeChannel? _showcaseChannel;
   RealtimeChannel? _ordersChannel;
@@ -45,38 +47,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Set up Supabase real-time subscriptions for tables that change frequently.
   void _setupRealtimeListeners() {
-    // Listen to showcase_requests changes
-    _showcaseChannel = supabase
-        .channel('public:showcase_requests')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'showcase_requests',
-          callback: (payload) => _handleShowcaseChange(payload),
-        )
-        .subscribe();
+    // The service helper creates channels with consistent naming.
+    _showcaseChannel = SupabaseService.instance
+        .subscribeToTable('showcase_requests', _handleShowcaseChange);
 
-    // Listen to online_orders changes
-    _ordersChannel = supabase
-        .channel('public:online_orders')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'online_orders',
-          callback: (payload) => _handleOrderChange(payload),
-        )
-        .subscribe();
+    _ordersChannel = SupabaseService.instance
+        .subscribeToTable('online_orders', _handleOrderChange);
 
-    // Listen to expenses changes
-    _expensesChannel = supabase
-        .channel('public:expenses')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'expenses',
-          callback: (payload) => _handleExpenseChange(payload),
-        )
-        .subscribe();
+    _expensesChannel = SupabaseService.instance
+        .subscribeToTable('expenses', _handleExpenseChange);
   }
 
   /// Handle real-time changes to showcase_requests
@@ -145,26 +124,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // --- INITIAL DATA FETCH ---
   Future<void> _loadDataFromSupabase() async {
     setState(() => _isLoading = true);
-    
+
     try {
-      // Fetch all tables concurrently for better performance
-      final responses = await Future.wait([
-        supabase.from('menu_items').select(),
-        supabase.from('staff_directory').select(),
-        supabase.from('eod_reports').select().order('created_at', ascending: false),
-        supabase.from('online_orders').select().order('created_at', ascending: false),
-        supabase.from('expenses').select().order('created_at', ascending: false),
-        supabase.from('showcase_requests').select().order('created_at', ascending: false),
+      // Fetch each table via service helpers.
+      final results = await Future.wait([
+        SupabaseService.instance.fetchMenuItems(),
+        SupabaseService.instance.fetchStaffDirectory(),
+        SupabaseService.instance.fetchEodReports(),
+        SupabaseService.instance.fetchOnlineOrders(),
+        SupabaseService.instance.fetchExpenses(),
+        SupabaseService.instance.fetchShowcaseRequests(),
       ]);
 
       setState(() {
-        _appData.menuItems = List<Map<String, dynamic>>.from(responses[0]);
-        _appData.staffDirectory = List<Map<String, dynamic>>.from(responses[1]);
-        _appData.eodReports = List<Map<String, dynamic>>.from(responses[2]);
-        _appData.onlineOrders = List<Map<String, dynamic>>.from(responses[3]);
-        _appData.expenses = List<Map<String, dynamic>>.from(responses[4]);
-        _appData.showcaseRequests = List<Map<String, dynamic>>.from(responses[5]);
-        
+        _appData.menuItems = results[0];
+        _appData.staffDirectory = results[1];
+        _appData.eodReports = results[2];
+        _appData.onlineOrders = results[3];
+        _appData.expenses = results[4];
+        _appData.showcaseRequests = results[5];
         _isLoading = false;
       });
     } catch (e) {
@@ -176,6 +154,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }
     }
+  }
+
+  // cleanup
+  @override
+  void dispose() {
+    _showcaseChannel?.unsubscribe();
+    _ordersChannel?.unsubscribe();
+    _expensesChannel?.unsubscribe();
+    super.dispose();
   }
 
   // Simple state refresh callback for child widgets
@@ -329,11 +316,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _showcaseChannel?.unsubscribe();
-    _ordersChannel?.unsubscribe();
-    _expensesChannel?.unsubscribe();
-    super.dispose();
-  }
 }
