@@ -24,6 +24,8 @@ class InputValidator {
   static const int maxUserNameLength = 100;
   static const int maxDeliveredQty = 1000;
   static const int minDeliveredQty = 0;
+  static const int maxCustomerLength = 120;
+  static const int maxOrderItems = 100;
 
   /// Validates EOD report data. Throws ValidationError if invalid.
   static void validateEodReport({
@@ -116,6 +118,34 @@ class InputValidator {
           '${entry.key} must be between $minEodAmount and $maxEodAmount (got $value)',
         );
       }
+    }
+  }
+
+  static void validateOnlineOrder({
+    required String id,
+    required String customer,
+    required List<Map<String, dynamic>> items,
+    required double total,
+    required String status,
+    required String loggedBy,
+  }) {
+    if (id.trim().isEmpty || id.length > maxIdLength) {
+      throw ValidationError('Order ID is invalid');
+    }
+    if (customer.trim().isEmpty || customer.trim().length > maxCustomerLength) {
+      throw ValidationError('Customer name is invalid');
+    }
+    if (loggedBy.trim().isEmpty || loggedBy.trim().length > maxUserNameLength) {
+      throw ValidationError('Logged by user is invalid');
+    }
+    if (items.isEmpty || items.length > maxOrderItems) {
+      throw ValidationError('Order items are invalid');
+    }
+    if (total < 0 || total > maxEodAmount) {
+      throw ValidationError('Order total is invalid');
+    }
+    if (status != 'pending' && status != 'verified') {
+      throw ValidationError('Order status is invalid');
     }
   }
 }
@@ -300,6 +330,79 @@ class SupabaseService {
       rethrow; // Re-throw validation errors for UI to handle
     } catch (e) {
       developer.log('SupabaseService.updateShowcaseRequest error: $e', name: 'SupabaseService');
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> insertOnlineOrder(
+    Map<String, dynamic> order,
+  ) async {
+    try {
+      final normalizedItems =
+          List<Map<String, dynamic>>.from(order['items'] as List<dynamic>);
+
+      InputValidator.validateOnlineOrder(
+        id: (order['id'] ?? '').toString(),
+        customer: (order['customer'] ?? '').toString(),
+        items: normalizedItems,
+        total: (order['total'] as num?)?.toDouble() ?? -1,
+        status: (order['status'] ?? '').toString(),
+        loggedBy:
+            (order['logged_by'] ?? order['loggedBy'] ?? '').toString(),
+      );
+
+      final payload = {
+        'id': (order['id'] ?? '').toString().trim(),
+        'customer': (order['customer'] ?? '').toString().trim(),
+        'items': normalizedItems,
+        'total': (order['total'] as num).toDouble(),
+        'status': (order['status'] ?? 'pending').toString(),
+        'date': (order['date'] ?? '').toString(),
+        'logged_by':
+            (order['logged_by'] ?? order['loggedBy'] ?? '').toString().trim(),
+      };
+
+      final supabase = client;
+      final resp = await supabase
+          .from('online_orders')
+          .insert(payload)
+          .select()
+          as List<dynamic>?;
+
+      if (resp != null && resp.isNotEmpty) {
+        return Map<String, dynamic>.from(resp.first);
+      }
+      return null;
+    } on ValidationError {
+      rethrow;
+    } catch (e) {
+      developer.log(
+        'SupabaseService.insertOnlineOrder error: $e',
+        name: 'SupabaseService',
+      );
+      return null;
+    }
+  }
+
+  Future<bool> updateOnlineOrderStatus(String id, String status) async {
+    try {
+      if (id.trim().isEmpty) {
+        throw ValidationError('Order ID cannot be empty');
+      }
+      if (status != 'pending' && status != 'verified') {
+        throw ValidationError('Order status is invalid');
+      }
+
+      final supabase = client;
+      await supabase.from('online_orders').update({'status': status}).eq('id', id);
+      return true;
+    } on ValidationError {
+      rethrow;
+    } catch (e) {
+      developer.log(
+        'SupabaseService.updateOnlineOrderStatus error: $e',
+        name: 'SupabaseService',
+      );
       return false;
     }
   }

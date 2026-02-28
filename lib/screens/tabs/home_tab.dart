@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/app_data.dart';
+import '../../services/supabase_service.dart';
 
 class HomeTab extends StatelessWidget {
   final Map<String, dynamic> currentUser;
@@ -31,7 +32,9 @@ class HomeTab extends StatelessWidget {
     }
 
     int pendingCount = appData.onlineOrders.where((o) => o['status'] == 'pending').length;
-    double verifiedRev = appData.onlineOrders.where((o) => o['status'] == 'verified').fold(0.0, (sum, o) => sum + o['total']);
+    double verifiedRev = appData.onlineOrders
+      .where((o) => o['status'] == 'verified')
+      .fold(0.0, (sum, o) => sum + ((o['total'] as num?)?.toDouble() ?? 0.0));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -66,7 +69,9 @@ class HomeTab extends StatelessWidget {
                       children: appData.onlineOrders.where((o) => o['status'] == 'pending').map((order) {
                         return ListTile(
                           title: Text(order['customer'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('${order['items'].length} items | Logged by ${order['loggedBy']}'),
+                          subtitle: Text(
+                            '${order['items'].length} items | Logged by ${order['loggedBy'] ?? order['logged_by'] ?? '-'}',
+                          ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -74,7 +79,14 @@ class HomeTab extends StatelessWidget {
                               const SizedBox(width: 16),
                               ElevatedButton(
                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                                onPressed: () {
+                                onPressed: () async {
+                                  final orderId = (order['id'] ?? '').toString();
+                                  if (orderId.isNotEmpty) {
+                                    await SupabaseService.instance.updateOnlineOrderStatus(
+                                      orderId,
+                                      'verified',
+                                    );
+                                  }
                                   order['status'] = 'verified';
                                   onStateChanged();
                                 },

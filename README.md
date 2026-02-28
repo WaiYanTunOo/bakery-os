@@ -8,6 +8,31 @@
 
 A new Flutter project.
 
+## Configuration & Secrets
+
+This app requires Supabase credentials:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+
+### Production Recommended
+
+Use build-time defines in CI/CD:
+
+```bash
+flutter run \
+	--dart-define=SUPABASE_URL=https://your-project.supabase.co \
+	--dart-define=SUPABASE_ANON_KEY=your_anon_key
+```
+
+### Development
+
+You can use a local `.env` file (already git-ignored) based on `.env.example`.
+On native platforms, valid credentials are also persisted with `flutter_secure_storage`.
+
+If credentials are missing or invalid, startup now fails safely with an explicit
+configuration error screen rather than running in a partially broken state.
+
 ## Continuous Integration
 
 This repository includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that runs on every push or pull request. It performs the following checks:
@@ -17,6 +42,19 @@ This repository includes a GitHub Actions workflow (`.github/workflows/ci.yml`) 
 3. A basic secret scan that fails if a `.env` file is committed or if common key patterns (e.g. `SUPABASE_`, `API_KEY`, `SECRET`) are detected in the source.
 
 Keep the workflow up‑to‑date and extend it as needed for linting, formatting, or other quality gates.
+
+## Database Hardening (Production)
+
+For production database protections aligned with app-side guards, apply:
+
+- `supabase/schema.sql` (base schema)
+- `supabase/production_hardening.sql` (strict constraints + RLS templates)
+
+The hardening script includes:
+
+- status/role check constraints (`pending|verified`, `pending|delivered`, `FH|BH|Owner`)
+- non-negative/shape checks for financial and JSON fields
+- production RLS policy templates for role-based access using JWT claims
 
 ## Getting Started
 

@@ -310,7 +310,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 'catalog': 
         return CatalogTab(appData: _appData, onStateChanged: _refresh);
       case 'staff': 
-        return StaffManagerTab(appData: _appData, onStateChanged: _refresh);
+        return StaffManagerTab(
+          currentUser: widget.currentUser,
+          appData: _appData,
+          onStateChanged: _refresh,
+        );
       default: 
         return const Center(child: Text('Work in progress'));
     }
